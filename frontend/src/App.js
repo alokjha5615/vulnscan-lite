@@ -10,9 +10,11 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
 
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
   const loadHistory = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/history");
+      const response = await fetch(`${BACKEND_URL}/api/history`);
       const data = await response.json();
       setHistory(data.history || []);
     } catch (err) {
@@ -34,18 +36,19 @@ function App() {
       second: "2-digit"
     });
   };
- 
-  const downloadPdf = () => {
-    if (!scanId) return;
-    window.open(`http://127.0.0.1:8000/api/scan/${scanId}/pdf`, "_blank");
-  };
 
-   const getGaugeColor = (score) => {
+  const getGaugeColor = (score) => {
     if (score >= 80) return "#22c55e";
     if (score >= 60) return "#38bdf8";
     if (score >= 40) return "#f59e0b";
     return "#ef4444";
   };
+
+  const downloadPdf = () => {
+    if (!scanId) return;
+    window.open(`${BACKEND_URL}/api/scan/${scanId}/pdf`, "_blank");
+  };
+
   const startScan = async () => {
     setError("");
     setResult(null);
@@ -54,7 +57,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/scan", {
+      const response = await fetch(`${BACKEND_URL}/api/scan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -64,7 +67,7 @@ function App() {
 
       const data = await response.json();
 
-            if (!response.ok) {
+      if (!response.ok) {
         throw new Error(
           data.error ||
           data.detail ||
@@ -90,17 +93,13 @@ function App() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(
-          `http://127.0.0.1:8000/api/scan/${scanId}/status`
-        );
+        const res = await fetch(`${BACKEND_URL}/api/scan/${scanId}/status`);
         const data = await res.json();
 
         setStatus(data.status);
 
         if (data.status === "completed") {
-          const resultRes = await fetch(
-            `http://127.0.0.1:8000/api/scan/${scanId}/result`
-          );
+          const resultRes = await fetch(`${BACKEND_URL}/api/scan/${scanId}/result`);
           const resultData = await resultRes.json();
 
           setResult(resultData.result);
@@ -122,7 +121,7 @@ function App() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [scanId]);
+  }, [scanId, BACKEND_URL]);
 
   const recentHistory = history.slice().reverse().slice(0, 6);
 
@@ -159,31 +158,32 @@ function App() {
         {result && (
           <div className="result-box">
             <div className="summary-card">
-  <div className="summary-top">
-    <div className="summary-info">
-      <p><strong>Target:</strong> {result.target}</p>
-      <p className="grade">Grade: {result.summary.grade}</p>
-      <p><strong>Total Findings:</strong> {result.summary.total_findings}</p>
+              <div className="summary-top">
+                <div className="summary-info">
+                  <p><strong>Target:</strong> {result.target}</p>
+                  <p className="grade">Grade: {result.summary.grade}</p>
+                  <p><strong>Total Findings:</strong> {result.summary.total_findings}</p>
 
-      <button className="pdf-button" onClick={downloadPdf}>
-        Download PDF Report
-      </button>
-    </div>
+                  <button className="pdf-button" onClick={downloadPdf}>
+                    Download PDF Report
+                  </button>
+                </div>
 
-    <div
-      className="gauge"
-      style={{
-        "--score": result.summary.score,
-        "--gauge-color": getGaugeColor(result.summary.score)
-      }}
-    >
-      <div className="gauge-inner">
-        <div className="gauge-score">{result.summary.score}</div>
-        <div className="gauge-label">Score</div>
-      </div>
-    </div>
-  </div>
-</div>
+                <div
+                  className="gauge"
+                  style={{
+                    "--score": result.summary.score,
+                    "--gauge-color": getGaugeColor(result.summary.score)
+                  }}
+                >
+                  <div className="gauge-inner">
+                    <div className="gauge-score">{result.summary.score}</div>
+                    <div className="gauge-label">Score</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="checks-section">
               <div className="checks-card">
                 <h3>Passed Checks</h3>
