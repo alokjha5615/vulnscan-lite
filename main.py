@@ -336,3 +336,10 @@ def download_scan_pdf(request: Request, scan_id: str):
             "Content-Disposition": f"attachment; filename=scan_report_{scan_id}.pdf"
         }
     )
+import threading
+from celery_app import celery_app
+
+def start_celery_worker():
+    celery_app.worker_main(["worker", "--loglevel=info"])
+
+threading.Thread(target=start_celery_worker, daemon=True).start()
