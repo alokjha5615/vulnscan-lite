@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "./App.css";
 
 function App() {
@@ -12,7 +12,7 @@ function App() {
 
   const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-  const loadHistory = async () => {
+    const loadHistory = useCallback(async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/history`);
       const data = await response.json();
@@ -20,7 +20,7 @@ function App() {
     } catch (err) {
       console.error("Failed to load history");
     }
-  };
+  }, [BACKEND_URL]);
 
   const formatDateTime = (isoString) => {
     if (!isoString) return "N/A";
@@ -86,9 +86,9 @@ function App() {
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [loadHistory]);
 
-  useEffect(() => {
+    useEffect(() => {
     if (!scanId) return;
 
     const interval = setInterval(async () => {
@@ -121,7 +121,7 @@ function App() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [scanId, BACKEND_URL]);
+  }, [scanId, BACKEND_URL, loadHistory]);
 
   const recentHistory = history.slice().reverse().slice(0, 6);
 
