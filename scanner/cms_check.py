@@ -2,12 +2,36 @@ from bs4 import BeautifulSoup
 import re
 
 
+CMS_BASELINES = {
+    "wordpress": "6.0",
+    "drupal": "9.0",
+    "joomla": "4.0"
+}
+
+
+def is_outdated(detected_version: str, baseline_version: str) -> bool:
+    try:
+        dv = [int(x) for x in detected_version.split(".") if x.isdigit()]
+        bv = [int(x) for x in baseline_version.split(".") if x.isdigit()]
+
+        length = max(len(dv), len(bv))
+        dv += [0] * (length - len(dv))
+        bv += [0] * (length - len(bv))
+
+        return dv < bv
+    except Exception:
+        return False
+
+
 def check_cms(headers: dict, html: str) -> dict:
     """
     Detect CMS clues from:
     - meta generator tags
     - X-Powered-By header
     - common HTML patterns
+
+    Also flags potentially outdated CMS versions when a visible version
+    is below the configured baseline.
     """
 
     findings = []
@@ -23,6 +47,7 @@ def check_cms(headers: dict, html: str) -> dict:
     generator_tag = soup.find("meta", attrs={"name": re.compile(r"generator", re.I)})
     x_powered_by = headers.get("X-Powered-By", "")
 
+    # Detect from meta generator
     if generator_tag and generator_tag.get("content"):
         generator_content = generator_tag.get("content").strip()
 
@@ -47,6 +72,7 @@ def check_cms(headers: dict, html: str) -> dict:
         if version_match:
             detected_version = version_match.group(1)
 
+    # Detect from X-Powered-By
     if x_powered_by:
         findings.append({
             "check_name": "X-Powered-By Header",
@@ -66,6 +92,7 @@ def check_cms(headers: dict, html: str) -> dict:
         elif "express" in lower_powered and not detected_cms:
             detected_cms = "Node.js / Express"
 
+    # Detect from common HTML fingerprints
     html_lower = html.lower()
 
     if not detected_cms:
@@ -76,32 +103,61 @@ def check_cms(headers: dict, html: str) -> dict:
         elif "joomla" in html_lower:
             detected_cms = "Joomla"
 
+    outdated_flag = False
+    outdated_note = None
+
+    if detected_cms and detected_version:
+        cms_key = detected_cms.lower()
+
+        if cms_key in CMS_BASELINES:
+            baseline = CMS_BASELINES[cms_key]
+
+            if is_outdated(detected_version, baseline):
+                outdated_flag = True
+                outdated_note = (
+                    f"{detected_cms} version {detected_version} may be outdated "
+                    f"(baseline {baseline}+ recommended)."
+                )
+
+    # Final CMS findings
     if detected_cms:
-        detail = f"Possible CMS detected: {detected_cms}"
-        if detected_version:
-            detail += f" (version: {detected_version})"
-
-        findings.append({
-            "check_name": "CMS Detection",
-            "status": "info",
-            "details": detail,
-            "severity": "info",
-            "remediation": "Keep CMS/plugins updated and avoid exposing exact versions where possible."
-        })
-
         if detected_version:
             findings.append({
                 "check_name": "CMS Version Exposure",
-                "status": "fail",
-                "details": f"CMS version appears publicly exposed: {detected_version}",
+                "status": "info",
+                "details": f"{detected_cms} version appears publicly exposed: {detected_version}",
                 "severity": "medium",
-                "remediation": "Hide public version details and ensure the CMS is fully updated."
+                "remediation": "Hide public version details where possible and keep the CMS fully updated."
             })
-            failed_checks.append("CMS Version Exposure")
+
+        if outdated_flag:
+            findings.append({
+                "check_name": "CMS Version Status",
+                "status": "fail",
+                "details": outdated_note,
+                "severity": "medium",
+                "remediation": (
+                    "Update the CMS to the latest stable version.\n"
+                    "Ensure plugins/themes are also updated.\n"
+                    "Regularly apply security patches."
+                )
+            })
+            failed_checks.append("CMS Version Status")
             score -= 10
         else:
+            findings.append({
+                "check_name": "CMS Detection",
+                "status": "pass",
+                "details": (
+                    f"{detected_cms} detected."
+                    + (f" Version identified: {detected_version}." if detected_version else " No outdated version identified.")
+                ),
+                "severity": "info",
+                "remediation": "No action needed."
+            })
             passed_checks.append("CMS Detection")
-            score += 5
+            score += 10
+
     else:
         findings.append({
             "check_name": "CMS Detection",
@@ -120,5 +176,6 @@ def check_cms(headers: dict, html: str) -> dict:
         "passed_checks": passed_checks,
         "failed_checks": failed_checks,
         "detected_cms": detected_cms,
-        "detected_version": detected_version
+        "detected_version": detected_version,
+        "outdated": outdated_flag
     }

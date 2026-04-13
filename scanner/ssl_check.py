@@ -77,7 +77,10 @@ def check_ssl_tls(url: str) -> dict:
                 "status": "fail",
                 "details": f"Certificate expires soon: {days_left} days left.",
                 "severity": "medium",
-                "remediation": "Renew the SSL/TLS certificate before expiration."
+                                "remediation": (
+                    "Renew the SSL/TLS certificate before expiration.\n"
+                    "If using Let's Encrypt, verify your auto-renewal job is working."
+                )
             })
             failed_checks.append("Certificate Expiration")
             score -= 10
@@ -87,7 +90,10 @@ def check_ssl_tls(url: str) -> dict:
                 "status": "fail",
                 "details": "Certificate has expired.",
                 "severity": "high",
-                "remediation": "Renew and replace the expired SSL/TLS certificate immediately."
+                                "remediation": (
+                    "Renew and replace the expired SSL/TLS certificate immediately.\n"
+                    "After renewal, verify the correct certificate chain is being served."
+                )
             })
             failed_checks.append("Certificate Expiration")
             score -= 20
@@ -111,7 +117,10 @@ def check_ssl_tls(url: str) -> dict:
                     "status": "fail",
                     "details": f"Weak cipher detected: {cipher_name}, protocol: {protocol}, bits: {bits}.",
                     "severity": "medium",
-                    "remediation": "Disable weak ciphers and use modern TLS configurations."
+                                        "remediation": (
+                        "Disable weak ciphers and allow only modern TLS settings.\n"
+                        "Prefer TLS 1.2+ and strong ciphers such as AES-GCM suites."
+                    )
                 })
                 failed_checks.append("Cipher Strength")
                 score -= 10
@@ -130,21 +139,32 @@ def check_ssl_tls(url: str) -> dict:
             "status": "fail",
             "details": f"SSL error: {str(e)}",
             "severity": "high",
-            "remediation": "Review certificate validity and TLS server configuration."
+                        "remediation": (
+                "Review certificate validity, certificate chain, and TLS server configuration.\n"
+                "Make sure the server is presenting the correct full certificate chain."
+            )
         })
         failed_checks.append("SSL/TLS Connection")
         score -= 20
 
     except Exception as e:
-        findings.append({
-            "check_name": "SSL/TLS Connection",
+               findings.append({
+            "check_name": "HTTPS Usage",
             "status": "fail",
-            "details": f"Could not inspect SSL/TLS: {str(e)}",
-            "severity": "medium",
-            "remediation": "Verify the site supports HTTPS and allows secure connections."
+            "details": "Website is not using HTTPS.",
+            "severity": "high",
+            "remediation": (
+                "Install a valid SSL/TLS certificate and redirect all HTTP traffic to HTTPS.\n"
+                "Nginx example:\n"
+                "server {\n"
+                "    listen 80;\n"
+                "    server_name example.com;\n"
+                "    return 301 https://$host$request_uri;\n"
+                "}"
+            )
         })
-        failed_checks.append("SSL/TLS Connection")
-        score -= 10
+               failed_checks.append("SSL/TLS Connection")
+               score -= 10
 
     return {
         "category": "ssl_tls",

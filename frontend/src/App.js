@@ -1,4 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
+} from "recharts";
 import "./App.css";
 
 function App() {
@@ -9,18 +18,36 @@ function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
-
-  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem("vulnscan_user");
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const BACKEND_URL =
+    process.env.REACT_APP_BACKEND_URL || "http://127.0.0.1:8000";
 
     const loadHistory = useCallback(async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/history`);
-      const data = await response.json();
+      const historyUrl = user
+        ? `${BACKEND_URL}/api/history?user_id=${user.id}`
+        : `${BACKEND_URL}/api/history`;
+
+      const response = await fetch(historyUrl);
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || "Invalid history response");
+      }
+
       setHistory(data.history || []);
     } catch (err) {
-      console.error("Failed to load history");
+      console.error("Failed to load history", err);
     }
-  }, [BACKEND_URL]);
+   }, [BACKEND_URL, user]);
 
   const formatDateTime = (isoString) => {
     if (!isoString) return "N/A";
@@ -48,31 +75,120 @@ function App() {
     if (!scanId) return;
     window.open(`${BACKEND_URL}/api/scan/${scanId}/pdf`, "_blank");
   };
+  const handleSignup = async () => {
+    setError("");
 
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+  email: email.trim().toLowerCase(),
+  password: password.trim()
+})
+      });
+
+      const text = await response.text();
+      let data;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || "Invalid signup response");
+      }
+
+      if (!data.success) {
+        throw new Error(data.message || "Signup failed");
+      }
+
+      setUser(data.user);
+      localStorage.setItem("vulnscan_user", JSON.stringify(data.user));
+      setEmail("");
+      setPassword("");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+    const handleLogin = async () => {
+    setError("");
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+  email: email.trim().toLowerCase(),
+  password: password.trim()
+})
+      });
+
+      const text = await response.text();
+      let data;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || "Invalid login response");
+      }
+
+      if (!data.success) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      setUser(data.user);
+      localStorage.setItem("vulnscan_user", JSON.stringify(data.user));
+      setEmail("");
+      setPassword("");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+    const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem("vulnscan_user");
+  };
   const startScan = async () => {
     setError("");
     setResult(null);
     setScanId("");
     setStatus("");
     setLoading(true);
-
+    if (!user) {
+      setError("Please login first");
+      setLoading(false);
+      return;
+    }
     try {
       const response = await fetch(`${BACKEND_URL}/api/scan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ url })
+                body: JSON.stringify({
+          url,
+          user_id: user ? user.id : null
+        })
       });
 
-      const data = await response.json();
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(text || "Server returned invalid response");
+      }
 
       if (!response.ok) {
         throw new Error(
           data.error ||
-          data.detail ||
-          data.message ||
-          "Failed to start scan"
+            data.detail ||
+            data.message ||
+            "Failed to start scan"
         );
       }
 
@@ -88,19 +204,35 @@ function App() {
     loadHistory();
   }, [loadHistory]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!scanId) return;
 
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${BACKEND_URL}/api/scan/${scanId}/status`);
-        const data = await res.json();
+        const text = await res.text();
+
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(text || "Invalid status response");
+        }
 
         setStatus(data.status);
 
         if (data.status === "completed") {
-          const resultRes = await fetch(`${BACKEND_URL}/api/scan/${scanId}/result`);
-          const resultData = await resultRes.json();
+                    const resultRes = await fetch(
+            `${BACKEND_URL}/api/scan/${scanId}/result?user_id=${user ? user.id : 1}`
+          );
+          const resultText = await resultRes.text();
+
+          let resultData;
+          try {
+            resultData = JSON.parse(resultText);
+          } catch {
+            throw new Error(resultText || "Invalid result response");
+          }
 
           setResult(resultData.result);
           setLoading(false);
@@ -114,17 +246,24 @@ function App() {
           clearInterval(interval);
         }
       } catch (err) {
-        setError("Error fetching scan status");
+        setError(err.message || "Error fetching scan status");
         setLoading(false);
         clearInterval(interval);
       }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [scanId, BACKEND_URL, loadHistory]);
-
+   }, [scanId, BACKEND_URL, loadHistory, user]);
   const recentHistory = history.slice().reverse().slice(0, 6);
-
+  const chartData = history
+    .slice()
+    .reverse()
+    .map((item, index) => ({
+      name: `Scan ${index + 1}`,
+      score: item.score,
+      target: item.target,
+      completed_at: formatDateTime(item.completed_at)
+    }));
   return (
     <div className="app">
       <div className="container">
@@ -134,7 +273,37 @@ function App() {
         <div className="disclaimer">
           Only scan websites you own or are authorized to test.
         </div>
-
+        <div className="auth-box">
+          {user ? (
+            <div className="auth-logged-in">
+              <p>
+                <strong>Logged in as:</strong> {user.email}
+              </p>
+              <button className="logout-button" onClick={handleLogout}>
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div className="auth-form">
+              <input
+                type="email"
+                placeholder="Enter email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                type="password"
+                placeholder="Enter password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <div className="auth-buttons">
+                <button onClick={handleSignup}>Sign Up</button>
+                <button onClick={handleLogin}>Login</button>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="scan-box">
           <input
             type="text"
@@ -142,9 +311,9 @@ function App() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
           />
-          <button onClick={startScan} disabled={loading}>
-            {loading ? "Scanning..." : "Start Scan"}
-          </button>
+          <button onClick={startScan} disabled={loading || !user}>
+  {loading ? "Scanning..." : user ? "Start Scan" : "Login to Scan"}
+</button>
         </div>
 
         {status && (
@@ -160,9 +329,14 @@ function App() {
             <div className="summary-card">
               <div className="summary-top">
                 <div className="summary-info">
-                  <p><strong>Target:</strong> {result.target}</p>
+                  <p>
+                    <strong>Target:</strong> {result.target}
+                  </p>
                   <p className="grade">Grade: {result.summary.grade}</p>
-                  <p><strong>Total Findings:</strong> {result.summary.total_findings}</p>
+                  <p>
+                    <strong>Total Findings:</strong>{" "}
+                    {result.summary.total_findings}
+                  </p>
 
                   <button className="pdf-button" onClick={downloadPdf}>
                     Download PDF Report
@@ -189,7 +363,9 @@ function App() {
                 <h3>Passed Checks</h3>
                 <ul>
                   {result.summary.passed_checks.map((item, i) => (
-                    <li key={i} className="pass">{item}</li>
+                    <li key={i} className="pass">
+                      {item}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -198,7 +374,9 @@ function App() {
                 <h3>Failed Checks</h3>
                 <ul>
                   {result.summary.failed_checks.map((item, i) => (
-                    <li key={i} className="fail">{item}</li>
+                    <li key={i} className="fail">
+                      {item}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -241,7 +419,9 @@ function App() {
                       </p>
 
                       <div
-                        className={`severity-badge severity-${finding.severity?.toLowerCase?.() || "info"}`}
+                        className={`severity-badge severity-${
+                          finding.severity?.toLowerCase?.() || "info"
+                        }`}
                       >
                         Severity: {finding.severity}
                       </div>
@@ -257,7 +437,40 @@ function App() {
             </div>
           </div>
         )}
+                <div className="chart-section">
+          <h2>Score Improvement Over Time</h2>
 
+          {chartData.length === 0 ? (
+            <div className="history-empty">No chart data yet.</div>
+          ) : (
+            <div className="chart-card">
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="name" stroke="#94a3b8" />
+                  <YAxis domain={[0, 100]} stroke="#94a3b8" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#1e293b",
+                      border: "1px solid #334155",
+                      borderRadius: "10px",
+                      color: "white"
+                    }}
+                    labelStyle={{ color: "#38bdf8" }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                    dot={{ r: 5 }}
+                    activeDot={{ r: 7 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
         <div className="history-section">
           <h2>Recent Scan History</h2>
 
@@ -267,10 +480,18 @@ function App() {
             <div className="history-list">
               {recentHistory.map((item, index) => (
                 <div key={index} className="history-card">
-                  <p><strong>Target:</strong> {item.target}</p>
-                  <p><strong>Score:</strong> {item.score}</p>
-                  <p><strong>Grade:</strong> {item.grade}</p>
-                  <p><strong>Completed:</strong> {formatDateTime(item.completed_at)}</p>
+                  <p>
+                    <strong>Target:</strong> {item.target}
+                  </p>
+                  <p>
+                    <strong>Score:</strong> {item.score}
+                  </p>
+                  <p>
+                    <strong>Grade:</strong> {item.grade}
+                  </p>
+                  <p>
+                    <strong>Completed:</strong> {formatDateTime(item.completed_at)}
+                  </p>
                 </div>
               ))}
             </div>

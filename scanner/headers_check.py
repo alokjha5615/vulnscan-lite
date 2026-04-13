@@ -10,15 +10,33 @@ def check_security_headers(headers: dict) -> dict:
     required_headers = {
         "Content-Security-Policy": {
             "description": "Helps prevent XSS and content injection attacks.",
-            "remediation": "Add a CSP header, e.g. Content-Security-Policy: default-src 'self';"
+            "remediation": (
+                "Add a CSP header in your server config.\n"
+                "Nginx example:\n"
+                "add_header Content-Security-Policy \"default-src 'self';\" always;\n"
+                "Apache example:\n"
+                "Header set Content-Security-Policy \"default-src 'self';\""
+            )
         },
         "X-Frame-Options": {
             "description": "Protects against clickjacking.",
-            "remediation": "Add X-Frame-Options: DENY or SAMEORIGIN."
+            "remediation": (
+                "Add X-Frame-Options in your server config.\n"
+                "Nginx example:\n"
+                "add_header X-Frame-Options \"DENY\" always;\n"
+                "Apache example:\n"
+                "Header always set X-Frame-Options \"DENY\""
+            )
         },
         "Strict-Transport-Security": {
             "description": "Forces browsers to use HTTPS.",
-            "remediation": "Add HSTS header, e.g. Strict-Transport-Security: max-age=31536000; includeSubDomains"
+            "remediation": (
+                "Add HSTS only after HTTPS is fully working.\n"
+                "Nginx example:\n"
+                "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\n"
+                "Apache example:\n"
+                "Header always set Strict-Transport-Security \"max-age=31536000; includeSubDomains\""
+            )
         }
     }
 
